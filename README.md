@@ -32,8 +32,8 @@ Usage
 Clone this repository and navigate to the directory.
 Run vagrant up to start and provision the VMs.
 - **Vagrant up**
-SSH into the master or worker nodes using
 
+SSH into the master or worker nodes using
 - **vagrant ssh <node_name>**
 
 ## Important Notes
