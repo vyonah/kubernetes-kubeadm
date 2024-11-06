@@ -34,7 +34,9 @@ Run vagrant up to start and provision the VMs.
 - **Vagrant up**
 
 SSH into the master or worker nodes using
-- **vagrant ssh <node_name>**
+- **vagrant ssh kubenode01**
+- **vagrant ssh kubemaster** 
+- **vagrant ssh kubenode02**
 
 ## Important Notes
 **Node Scaling:** To change the number of master or worker nodes, adjust the NUM_MASTER_NODE and NUM_WORKER_NODE values in the script and update the setup-hosts.sh script accordingly.

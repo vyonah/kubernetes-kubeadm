@@ -1,0 +1,118 @@
+Installing Oracle Virtual Box
+a. Windows OS
+i. Microsoft Visual c+++ 2019
+https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+ii. Oracle virtual box package
+https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170
+
+
+b. Mac OS
+Check your processor model
+if Intel host = https://download.virtualbox.org/virtualbox/7.1.4/VirtualBox-7.1.4-165100-OSX.dmg
+   Silicon apple = https://download.virtualbox.org/virtualbox/7.1.4/VirtualBox-7.1.4-165100-macOSArm64.dmg
+
+
+Bootstrapping our vms using vagrant
+
+a. Install vagrant
+
+https://developer.hashicorp.com/vagrant/install
+
+b. Clone vagrant script repo
+https://github.com/ndiforfusi/kubernetes-kubeadm
+
+cd kubernetes-kubeadm
+Run: vagrant up
+
+
+
+
+
+
+
+
+
+
+Here’s a step-by-step guide to building a Kubernetes cluster using kubeadm:
+
+Prerequisites
+Servers and OS:
+Minimum of 3 nodes: 1 master and 2 worker nodes.
+Each server should have at least 2 GB of RAM for the master and 1 GB for workers.
+Recommended OS: Ubuntu 20.04 or CentOS 7.
+
+
+Networking:
+All nodes should be able to communicate over the network.
+1. Disable swap on all nodes, as Kubernetes requires swap to be disabled:
+sudo swapoff -a
+
+Install Docker:
+sudo apt update -y
+sudo apt install -y docker.io
+
+2. Configure sysctl for Kubernetes networking:
+Set up IP forwarding:
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+br_netfilter
+EOF
+sudo modprobe br_netfilter
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+EOF
+
+sudo sysctl --system
+
+3. Install kubeadm, kubelet, and kubectl:
+sudo apt update -y
+sudo apt install -y apt-transport-https ca-certificates curl
+curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+sudo apt update
+sudo apt install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+
+4. Initialize the Kubernetes Cluster (Master Node):
+Initialize the Cluster with kubeadm:
+
+sudo kubeadm init --pod-network-cidr=10.244.0.0/16
+The --pod-network-cidr option specifies the IP range for the pod network. Adjust as necessary if using another network plugin.
+Configure kubectl for the Master Node:
+
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+5. Install a Pod Network Add-On:
+Here’s how to install Flannel:
+kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+Save the Join Command:
+
+
+After initialization, kubeadm provides a command to join worker nodes to the cluster. Copy this command, as it will be used in the next step on worker nodes.
+Join Worker Nodes to the Cluster
+6. Run the Join Command (on each worker node):
+Use the kubeadm join command that was generated on the master node:
+sudo kubeadm join <master-node-ip>:<port> --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+Verify the Cluster
+Check the Status of Nodes (on the master node):
+
+kubectl get nodes
+
+You should see both the master and worker nodes listed, with their status as Ready.
+
+
+To start using your cluster, you need to run the following as a regular user:
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Alternatively, if you are the root user, you can run:
+
+  export KUBECONFIG=/etc/kubernetes/admin.conf
+
+You should now deploy a pod network to the cluster.
