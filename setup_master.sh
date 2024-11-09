@@ -43,15 +43,21 @@ sudo sed -i '/sandbox_image =/c\    sandbox_image = "registry.k8s.io/pause:3.9"'
 sudo systemctl restart containerd
 sudo systemctl enable containerd
 
+# Manually install crictl
+echo "Installing crictl manually..."
+CRICTL_VERSION="v1.27.1"
+curl -L https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-amd64.tar.gz -o crictl.tar.gz
+sudo tar -C /usr/local/bin -xzf crictl.tar.gz
+rm -f crictl.tar.gz
+
 # Verify CRI is correctly configured
 echo "Verifying CRI configuration with crictl..."
-sudo apt-get install -y cri-tools
 if ! sudo crictl info; then
     echo "CRI configuration failed. Please check containerd setup."
     exit 1
 fi
 
-# Install kubeadm, kubelet, kubectl
+# Install kubeadm, kubelet, and kubectl
 echo "Installing kubeadm, kubelet, kubectl..."
 sudo apt-get update -y
 sudo apt-get install -y apt-transport-https ca-certificates curl gpg
@@ -62,11 +68,9 @@ sudo apt-get update -y
 sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
 
-# Identify the network interface for Kubernetes communication (e.g., enp0s8)
+# Initialize Kubernetes cluster with the correct network interface IP
 INTERFACE="enp0s8"
 IP_ADDRESS=$(ip -4 addr show $INTERFACE | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-
-# Initialize Kubernetes cluster with the correct network interface IP
 echo "Initializing Kubernetes cluster..."
 sudo kubeadm init --apiserver-advertise-address=$IP_ADDRESS --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=CRI
 if [ $? -ne 0 ]; then
