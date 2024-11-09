@@ -36,28 +36,46 @@ Run: vagrant up
 
 Here’s a step-by-step guide to building a Kubernetes cluster using kubeadm:
 
+
 Prerequisites
-Servers and OS:
-Minimum of 3 nodes: 1 master and 2 worker nodes.
-Each server should have at least 2 GB of RAM for the master and 1 GB for workers.
-Recommended OS: Ubuntu 20.04 or CentOS 7.
+Nodes:
 
-
+1 master node and 2 worker nodes.
+Minimum 2 GB RAM on the master and 1 GB RAM on each worker node.
+Recommended OS: Ubuntu 20.04.
 Networking:
-All nodes should be able to communicate over the network.
-1. Disable swap on all nodes, as Kubernetes requires swap to be disabled:
+
+Ensure all nodes can communicate with each other over the network.
+Disable Swap (on all nodes):
+
 sudo swapoff -a
+sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+Step 1: Install Docker and Containerd
+Install Dependencies:
 
-Install Docker:
-sudo apt update -y
-sudo apt install -y docker.io
+sudo apt-get update -y
+sudo apt-get install -y ca-certificates curl
+Add Docker’s Official GPG Key:
 
-2. Configure sysctl for Kubernetes networking:
-Set up IP forwarding:
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo tee /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+Set Up the Docker Repository:
+
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+Install Docker and Containerd:
+
+sudo apt-get update -y
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+Step 2: Configure Sysctl for Kubernetes Networking
+Enable IP Forwarding and Configure Bridged Networking:
+
 cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
 br_netfilter
 EOF
 sudo modprobe br_netfilter
+Set Sysctl Parameters:
+
 cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
@@ -65,54 +83,71 @@ net.bridge.bridge-nf-call-ip6tables = 1
 EOF
 
 sudo sysctl --system
+Step 3: Configure Containerd for Kubernetes
+Generate Containerd Configuration:
 
-3. Install kubeadm, kubelet, and kubectl:
-sudo apt update -y
-sudo apt install -y apt-transport-https ca-certificates curl
-curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
-sudo apt update
-sudo apt install -y kubelet kubeadm kubectl
+sudo mkdir -p /etc/containerd
+sudo containerd config default | sudo tee /etc/containerd/config.toml
+Edit /etc/containerd/config.toml:
+
+Open the file:
+
+sudo nano /etc/containerd/config.toml
+In the [plugins."io.containerd.grpc.v1.cri"] section, ensure the sandbox_image is set and CRI is enabled. It should look like this:
+toml
+
+[plugins."io.containerd.grpc.v1.cri"]
+  sandbox_image = "registry.k8s.io/pause:3.9"
+Restart and Enable containerd:
+
+sudo systemctl restart containerd
+sudo systemctl enable containerd
+Verify CRI with crictl (Optional):
+
+sudo apt-get install -y cri-tools
+sudo crictl info
+Step 4: Install kubeadm, kubelet, and kubectl
+Add Kubernetes GPG Key and Repository:
+
+sudo apt-get update -y
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+sudo mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+Install Kubernetes Components:
+
+sudo apt-get update -y
+sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
-
-4. Initialize the Kubernetes Cluster (Master Node):
+Step 5: Initialize Kubernetes Cluster (Master Node Only)
 Initialize the Cluster with kubeadm:
 
-sudo kubeadm init --pod-network-cidr=10.244.0.0/16
-The --pod-network-cidr option specifies the IP range for the pod network. Adjust as necessary if using another network plugin.
+sudo kubeadm init --pod-network-cidr=10.244.0.0/16 --ignore-preflight-errors=CRI
 Configure kubectl for the Master Node:
 
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
+Install Flannel Network Plugin:
 
-5. Install a Pod Network Add-On:
-Here’s how to install Flannel:
 kubectl apply -f https://raw.githubusercontent.com/coreos/flannel/master/Documentation/kube-flannel.yml
+This will configure Flannel as the pod network.
+
 Save the Join Command:
 
+After initializing the cluster, kubeadm will display a join command (e.g., kubeadm join <master-ip>:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>).
+Copy this command, as it will be used on each worker node to join the cluster.
+Step 6: Join Worker Nodes to the Cluster (Worker Nodes Only)
+Run the Join Command from Step 5 on each worker node:
 
-After initialization, kubeadm provides a command to join worker nodes to the cluster. Copy this command, as it will be used in the next step on worker nodes.
-Join Worker Nodes to the Cluster
-6. Run the Join Command (on each worker node):
-Use the kubeadm join command that was generated on the master node:
-sudo kubeadm join <master-node-ip>:<port> --token <token> --discovery-token-ca-cert-hash sha256:<hash>
-Verify the Cluster
-Check the Status of Nodes (on the master node):
+
+sudo kubeadm join <master-ip>:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+Verify the Join Process:
+
+After running the command, each worker node should join the cluster.
+Step 7: Verify the Cluster
+Check Node Status (on the master node):
 
 kubectl get nodes
+You should see both the master and worker nodes listed with their status as Ready.
 
-You should see both the master and worker nodes listed, with their status as Ready.
-
-
-To start using your cluster, you need to run the following as a regular user:
-
-  mkdir -p $HOME/.kube
-  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-  sudo chown $(id -u):$(id -g) $HOME/.kube/config
-
-Alternatively, if you are the root user, you can run:
-
-  export KUBECONFIG=/etc/kubernetes/admin.conf
-
-You should now deploy a pod network to the cluster.
